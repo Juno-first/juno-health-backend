@@ -1,31 +1,31 @@
-# ─── Stage 1: Build ───────────────────────────────────────────────
+# ---------- Build stage ----------
 FROM eclipse-temurin:21-jdk-alpine AS builder
 
 WORKDIR /app
 
-# Copy maven wrapper and pom first (layer caching — only re-downloads deps if pom changes)
-COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
+# Copy Maven wrapper and pom first for better layer caching
+COPY healthapp/.mvn/ .mvn/
+COPY healthapp/mvnw ./
+COPY healthapp/pom.xml ./
 
+RUN chmod +x mvnw
 RUN ./mvnw dependency:go-offline -B
 
 # Copy source and build
-COPY src ./src
+COPY healthapp/src ./src
 RUN ./mvnw clean package -DskipTests -B
 
-# ─── Stage 2: Run ─────────────────────────────────────────────────
+# ---------- Runtime stage ----------
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
 WORKDIR /app
 
-# Non-root user for security
-RUN addgroup -S healthapp && adduser -S healthapp -G healthapp
+# Optional: create non-root user
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
 
+# Copy built jar from builder
 COPY --from=builder /app/target/*.jar app.jar
-
-RUN chown healthapp:healthapp app.jar
-
-USER healthapp
 
 EXPOSE 8080
 
