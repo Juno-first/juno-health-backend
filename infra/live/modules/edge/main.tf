@@ -50,9 +50,15 @@ resource "aws_acm_certificate" "this" {
   domain_name               = var.app_fqdn
   subject_alternative_names = [var.ai_fqdn]
   validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_route53_record" "validation" {
+  allow_overwrite = true
+
   for_each = {
     for option in aws_acm_certificate.this.domain_validation_options :
     option.domain_name => {
@@ -135,7 +141,7 @@ resource "aws_lb_listener_rule" "ai" {
   }
 }
 
-resource "aws_route53_record" "app" {
+resource "aws_route53_record" "api" {
   zone_id = var.hosted_zone_id
   name    = var.app_fqdn
   type    = "A"
