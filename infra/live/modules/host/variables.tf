@@ -42,11 +42,6 @@ variable "frontend_origin" {
   type = string
 }
 
-variable "aws_region" {
-  description = "AWS region to deploy resources in"
-  type        = string
-}
-
 variable "app_cors_allowed_origins" {
   description = "Allowed origins for CORS"
   type        = string
