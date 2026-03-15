@@ -44,12 +44,9 @@ module "host" {
   root_volume_size   = var.root_volume_size
   app_image_tag      = var.app_image_tag
   deploy_bucket_name = module.artifacts.deploy_bucket_name
-  ecr_repository_arns = [
-    module.artifacts.ecr_repository_arn,
-    module.artifacts.ai_ecr_repository_arn,
-  ]
-  aws_region      = var.aws_region
-  frontend_origin = local.frontend_origin
+  ecr_repository_arn = module.artifacts.ecr_repository_arn
+  aws_region         = var.aws_region
+  frontend_origin    = local.frontend_origin
 }
 
 resource "aws_lb_target_group_attachment" "app" {
