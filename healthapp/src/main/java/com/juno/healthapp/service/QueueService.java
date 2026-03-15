@@ -172,6 +172,7 @@ public class QueueService {
         return new CheckInResponse(
                 visit.getId(),
                 queueEntry.getId(),
+                department.getId(),
                 insertPosition,
                 queueDepth + 1,
                 priorityTier,
@@ -356,6 +357,7 @@ public class QueueService {
                     return new CheckInResponse(
                             visit.getId(),
                             entry.getId(),
+                            department.getId(),
                             entry.getPosition(),
                             queueDepth,
                             entry.getPriorityTier(),

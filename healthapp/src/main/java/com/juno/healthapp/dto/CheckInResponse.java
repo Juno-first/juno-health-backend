@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record CheckInResponse(
         UUID visitId,
+        UUID departmentId,
         UUID queueEntryId,
         int position,
         int queueDepth,
