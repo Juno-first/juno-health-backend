@@ -18,7 +18,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U healthapp -d healthapp"]
       interval: 10s
-      timeout: 5s
+      timeout: 50s
       retries: 5
 
   pgadmin:
@@ -52,7 +52,7 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "redis_dev", "ping"]
       interval: 10s
-      timeout: 5s
+      timeout: 50s
       retries: 5
 
   # ─────────────────────────────────────────────
@@ -88,7 +88,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1"]
       interval: 15s
-      timeout: 10s
+      timeout: 100s
       retries: 10
     logging:
       driver: "json-file"
@@ -271,6 +271,42 @@ services:
       KAFKA_CLUSTERS_0_KSQLDBSERVER: http://ksqldb-server:8088
     networks:
       - healthapp_network
+
+  app:
+    image: ${APP_IMAGE:-healthapp:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthapp_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-healthapp}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-healthapp}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-healthapp_dev}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-your-super-secret-key-that-is-at-least-32-characters-long}
+      APP_JWT_EXPIRATION_MS: ${APP_JWT_EXPIRATION_MS:-86400000}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:4200}
+    ports:
+      - "8080:8080"
+    networks:
+      - healthapp_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 100s
+      retries: 10
+      start_period: 100s
 
 volumes:
   postgres_data:

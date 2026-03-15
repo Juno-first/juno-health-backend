@@ -1,0 +1,87 @@
+name: Test and Lint
+
+on:
+  workflow_call:
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: healthapp
+          POSTGRES_USER: healthapp
+          POSTGRES_PASSWORD: healthapp_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U healthapp -d healthapp"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/healthapp
+      SPRING_DATASOURCE_USERNAME: healthapp
+      SPRING_DATASOURCE_PASSWORD: healthapp_dev
+      SPRING_DATA_REDIS_HOST: localhost
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ""
+      APP_JWT_SECRET: ci-test-secret-key-with-at-least-32-characters
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Run backend tests
+        run: |
+          chmod +x mvnw
+          ./mvnw -B test
+
+      - name: Build application
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -DskipTests package
+
+      - name: Build container image
+        run: docker build -t juno-backend:ci .
+
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.2
+
+      - name: Validate setup stack
+        run: |
+          terraform -chdir=infra/setup init -backend=false
+          terraform -chdir=infra/setup fmt -check
+          terraform -chdir=infra/setup validate
+
+      - name: Validate deploy stack
+        run: |
+          terraform -chdir=infra/deploy init -backend=false
+          terraform -chdir=infra/deploy fmt -check
+          terraform -chdir=infra/deploy validate
