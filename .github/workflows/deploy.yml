@@ -1,0 +1,206 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  setup_infra:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    outputs:
+      workspace: ${{ steps.target.outputs.workspace }}
+      environment_name: ${{ steps.target.outputs.environment_name }}
+      frontend_origin: ${{ steps.target.outputs.frontend_origin }}
+      latest_tag: ${{ steps.target.outputs.latest_tag }}
+      image_tag: ${{ steps.target.outputs.image_tag }}
+      ecr_repository_url: ${{ steps.infra.outputs.ecr_repository_url }}
+      deploy_bucket_name: ${{ steps.infra.outputs.deploy_bucket_name }}
+      instance_id: ${{ steps.infra.outputs.instance_id }}
+      public_api_url: ${{ steps.infra.outputs.public_api_url }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve deployment target
+        id: target
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            echo "workspace=prod" >> "${GITHUB_OUTPUT}"
+            echo "environment_name=production" >> "${GITHUB_OUTPUT}"
+            echo "frontend_origin=${{ vars.PROD_FRONTEND_ORIGIN }}" >> "${GITHUB_OUTPUT}"
+            echo "latest_tag=prod-latest" >> "${GITHUB_OUTPUT}"
+          else
+            echo "workspace=staging" >> "${GITHUB_OUTPUT}"
+            echo "environment_name=staging" >> "${GITHUB_OUTPUT}"
+            echo "frontend_origin=${{ vars.STAGING_FRONTEND_ORIGIN }}" >> "${GITHUB_OUTPUT}"
+            echo "latest_tag=staging-latest" >> "${GITHUB_OUTPUT}"
+          fi
+          echo "image_tag=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Write backend config
+        shell: bash
+        run: |
+          cat > infra/live/backend.hcl <<EOF
+          bucket         = "${{ secrets.TF_STATE_BUCKET }}"
+          key            = "healthapp/live/terraform.tfstate"
+          region         = "${{ vars.AWS_REGION }}"
+          dynamodb_table = "${{ secrets.TF_LOCK_TABLE }}"
+          encrypt        = true
+          EOF
+
+      - name: Terraform init
+        run: terraform -chdir=infra/live init -backend-config=backend.hcl
+
+      - name: Select workspace
+        shell: bash
+        run: |
+          terraform -chdir=infra/live workspace select "${{ steps.target.outputs.workspace }}" \
+            || terraform -chdir=infra/live workspace new "${{ steps.target.outputs.workspace }}"
+
+      - name: Terraform apply
+        shell: bash
+        run: |
+          INSTANCE_TYPE="${{ vars.INSTANCE_TYPE }}"
+          if [[ -z "${INSTANCE_TYPE}" ]]; then
+            INSTANCE_TYPE="t3.large"
+          fi
+
+          terraform -chdir=infra/live apply \
+            -auto-approve \
+            -input=false \
+            -var="aws_region=${{ vars.AWS_REGION }}" \
+            -var="root_domain=${{ vars.ROOT_DOMAIN }}" \
+            -var="hosted_zone_id=${{ vars.HOSTED_ZONE_ID }}" \
+            -var="instance_type=${INSTANCE_TYPE}" \
+            -var="app_image_tag=${{ steps.target.outputs.image_tag }}" \
+            -var="staging_frontend_origin=${{ vars.STAGING_FRONTEND_ORIGIN }}" \
+            -var="prod_frontend_origin=${{ vars.PROD_FRONTEND_ORIGIN }}"
+
+      - name: Capture Terraform outputs
+        id: infra
+        shell: bash
+        run: |
+          echo "ecr_repository_url=$(terraform -chdir=infra/live output -raw ecr_repository_url)" >> "${GITHUB_OUTPUT}"
+          echo "deploy_bucket_name=$(terraform -chdir=infra/live output -raw deploy_bucket_name)" >> "${GITHUB_OUTPUT}"
+          echo "instance_id=$(terraform -chdir=infra/live output -raw instance_id)" >> "${GITHUB_OUTPUT}"
+          echo "public_api_url=$(terraform -chdir=infra/live output -raw public_api_url)" >> "${GITHUB_OUTPUT}"
+
+  build_and_push_app_image:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    needs: setup_infra
+    outputs:
+      bundle_key: ${{ steps.bundle.outputs.bundle_key }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        shell: bash
+        run: |
+          ECR_REGISTRY="${{ needs.setup_infra.outputs.ecr_repository_url }}"
+          ECR_REGISTRY="${ECR_REGISTRY%%/*}"
+          aws ecr get-login-password --region "${{ vars.AWS_REGION }}" \
+            | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+      - name: Build and push app image
+        shell: bash
+        run: |
+          IMAGE_URI="${{ needs.setup_infra.outputs.ecr_repository_url }}:${{ needs.setup_infra.outputs.image_tag }}"
+          LATEST_URI="${{ needs.setup_infra.outputs.ecr_repository_url }}:${{ needs.setup_infra.outputs.latest_tag }}"
+          docker build -t "${IMAGE_URI}" -t "${LATEST_URI}" .
+          docker push "${IMAGE_URI}"
+          docker push "${LATEST_URI}"
+
+      - name: Render runtime environment
+        shell: bash
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          APP_IMAGE: ${{ needs.setup_infra.outputs.ecr_repository_url }}:${{ needs.setup_infra.outputs.image_tag }}
+          APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          APP_JWT_EXPIRATION_MS: ${{ vars.APP_JWT_EXPIRATION_MS }}
+          APP_CORS_ALLOWED_ORIGINS: ${{ needs.setup_infra.outputs.frontend_origin }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+        run: |
+          mkdir -p build/deploy
+          bash scripts/render-runtime-env.sh build/deploy/.env.aws
+
+      - name: Build deployment bundle
+        run: bash scripts/build-deploy-bundle.sh build/deploy/deploy-bundle.tar.gz build/deploy/.env.aws
+
+      - name: Upload deployment bundle
+        id: bundle
+        shell: bash
+        run: |
+          bundle_key="releases/${{ needs.setup_infra.outputs.workspace }}/${{ needs.setup_infra.outputs.image_tag }}/deploy-bundle.tar.gz"
+          aws s3 cp build/deploy/deploy-bundle.tar.gz "s3://${{ needs.setup_infra.outputs.deploy_bucket_name }}/${bundle_key}"
+          echo "bundle_key=${bundle_key}" >> "${GITHUB_OUTPUT}"
+
+  deploy_on_ec2:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    needs:
+      - setup_infra
+      - build_and_push_app_image
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy on EC2 via SSM
+        shell: bash
+        run: |
+          cat > /tmp/ssm-parameters.json <<EOF
+          {
+            "commands": [
+              "set -euo pipefail",
+              "sudo rm -rf /opt/healthapp/current/*",
+              "aws s3 cp s3://${{ needs.setup_infra.outputs.deploy_bucket_name }}/${{ needs.build_and_push_app_image.outputs.bundle_key }} /tmp/deploy-bundle.tar.gz",
+              "sudo tar -xzf /tmp/deploy-bundle.tar.gz -C /opt/healthapp/current",
+              "sudo bash /opt/healthapp/current/host-deploy.sh"
+            ]
+          }
+          EOF
+
+          command_id="$(aws ssm send-command \
+            --instance-ids "${{ needs.setup_infra.outputs.instance_id }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy healthapp ${{ needs.setup_infra.outputs.image_tag }}" \
+            --parameters file:///tmp/ssm-parameters.json \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          aws ssm wait command-executed \
+            --command-id "${command_id}" \
+            --instance-id "${{ needs.setup_infra.outputs.instance_id }}"
+
+      - name: Smoke test public health endpoint
+        run: curl --fail --retry 10 --retry-delay 15 "${{ needs.setup_infra.outputs.public_api_url }}/actuator/health"
