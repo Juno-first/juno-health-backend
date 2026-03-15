@@ -214,6 +214,9 @@ jobs:
           AI_TTS_SPEAKING_RATE: ${{ vars.AI_TTS_SPEAKING_RATE }}
           AI_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
           AI_KAFKA_QUEUE_TOPIC: ${{ vars.AI_KAFKA_QUEUE_TOPIC }}
+          AI_GEMINI_API_KEY: ${{ secrets.AI_GEMINI_API_KEY }}
+          AI_OPENAI_API_KEY: ${{ secrets.AI_OPENAI_API_KEY }}
+          AI_JWT_ALGORITHM: ${{ vars.AI_JWT_ALGORITHM }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
         run: |
