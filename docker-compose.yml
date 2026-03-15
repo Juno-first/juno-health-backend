@@ -110,6 +110,14 @@ services:
     entrypoint: ["bash", "-c"]
     command:
       - |
+        /opt/kafka/bin/kafka-topics.sh \
+          --create \
+          --if-not-exists \
+          --topic department.queue.snapshot \
+          --bootstrap-server kafka:29092 \
+          --partitions 1 \
+          --replication-factor 1
+
         /opt/kafka/bin/kafka-configs.sh \
           --alter \
           --bootstrap-server kafka:29092 \
@@ -117,6 +125,26 @@ services:
           --entity-name client_portfolio \
           --add-config cleanup.policy=compact,retention.ms=-1 || \
           echo 'Topic not yet created — compaction will need to be applied after ksqlDB creates it.'
+
+  # kafka-topic-consumer:
+  #   image: apache/kafka:4.1.0
+  #   container_name: healthapp_kafka_topic_consumer
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #     kafka-setup:
+  #       condition: service_started
+  #   profiles:
+  #     - debug
+  #   networks:
+  #     - healthapp_network
+  #   entrypoint: ["bash", "-c"]
+  #   command:
+  #     - |
+  #       /opt/kafka/bin/kafka-console-consumer.sh \
+  #         --topic department.queue.snapshot \
+  #         --from-beginning \
+  #         --bootstrap-server kafka:29092
 
   # ─────────────────────────────────────────────
   # Confluent platform services
@@ -330,6 +358,42 @@ services:
       timeout: 100s
       retries: 10
       start_period: 100s
+
+  ai:
+    image: ${AI_APP_IMAGE:-healthapp-ai:local}
+    build:
+      context: ./juno-health-ai
+      dockerfile: Dockerfile
+    container_name: healthapp_ai
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: ${AI_GOOGLE_APPLICATION_CREDENTIALS:-/opt/healthapp/current/credentials.json}
+      GEMINI_MODEL: ${AI_GEMINI_MODEL:-gemini-2.5-flash-lite}
+      TTS_VOICE_NAME: ${AI_TTS_VOICE_NAME:-en-US-Chirp3-HD-Kore}
+      TTS_LANGUAGE_CODE: ${AI_TTS_LANGUAGE_CODE:-en-US}
+      TTS_SPEAKING_RATE: ${AI_TTS_SPEAKING_RATE:-1.0}
+      KAFKA_BOOTSTRAP_SERVERS: ${AI_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      KAFKA_QUEUE_TOPIC: ${AI_KAFKA_QUEUE_TOPIC:-department.queue.snapshot}
+      JWT_SECRET: ${AI_JWT_SECRET:-your-super-secret-key-that-is-at-least-32-characters-long}
+      GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${AI_OPENAI_API_KEY:-}
+      JWT_ALGORITHM: ${AI_JWT_ALGORITHM:-HS256}
+      AI_CORS_ALLOWED_ORIGINS: ${AI_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    volumes:
+      - ${AI_CREDENTIALS_HOST_PATH:-./juno-health-ai/credentials.json}:${AI_GOOGLE_APPLICATION_CREDENTIALS:-/opt/healthapp/current/credentials.json}:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - healthapp_network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 30s
+      retries: 10
+      start_period: 30s
 
 volumes:
   postgres_data:

@@ -30,8 +30,8 @@ variable "deploy_bucket_name" {
   type = string
 }
 
-variable "ecr_repository_arn" {
-  type = string
+variable "ecr_repository_arns" {
+  type = list(string)
 }
 
 variable "aws_region" {

@@ -105,6 +105,17 @@ public class QueueEntryDAOImpl implements QueueEntryDAO {
         return maxPosition == null ? 1 : maxPosition + 1;
     }
 
+    // DAOImpl
+    @Override
+    public void incrementPositionsFrom(Department department, int fromPosition) {
+        queryFactory.update(queueEntry)
+                .set(queueEntry.position, queueEntry.position.add(1))
+                .where(queueEntry.department.eq(department)
+                        .and(queueEntry.position.goe(fromPosition))
+                        .and(queueEntry.visit.status.in("CHECKED_IN", "CALLED")))
+                .execute();
+    }
+
     @Override
     @Transactional
     public void decrementPositionsAfter(Department department, int position) {
