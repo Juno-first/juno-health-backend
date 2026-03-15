@@ -41,8 +41,3 @@ variable "aws_region" {
 variable "frontend_origin" {
   type = string
 }
-
-variable "app_cors_allowed_origins" {
-  description = "Allowed origins for CORS"
-  type        = string
-}

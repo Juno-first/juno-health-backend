@@ -84,7 +84,6 @@ jobs:
             -auto-approve \
             -input=false \
             -var="aws_region=${{ vars.AWS_REGION }}" \
-            -var="app_cors_allowed_origins=${{ vars.APP_CORS_ALLOWED_ORIGINS }}" \
             -var="root_domain=${{ vars.ROOT_DOMAIN }}" \
             -var="hosted_zone_id=${{ vars.HOSTED_ZONE_ID }}" \
             -var="instance_type=${INSTANCE_TYPE}" \
