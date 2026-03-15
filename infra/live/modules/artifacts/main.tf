@@ -9,6 +9,15 @@ resource "aws_ecr_repository" "app" {
   }
 }
 
+resource "aws_ecr_repository" "ai" {
+  name                 = "${var.name_prefix}/ai"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 resource "aws_s3_bucket" "deploy" {
   bucket = "${var.name_prefix}-deploy-${data.aws_caller_identity.current.account_id}"
 }

@@ -1,0 +1,5 @@
+bucket         = "replace-with-your-tf-state-bucket"
+key            = "healthapp/live/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "replace-with-your-tf-lock-table"
+encrypt        = true

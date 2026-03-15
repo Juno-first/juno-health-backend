@@ -33,7 +33,7 @@ data "aws_iam_policy_document" "instance_access" {
       "ecr:GetDownloadUrlForLayer",
       "ecr:BatchCheckLayerAvailability"
     ]
-    resources = [var.ecr_repository_arn]
+    resources = var.ecr_repository_arns
   }
 
   statement {
