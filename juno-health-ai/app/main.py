@@ -10,6 +10,7 @@ from app.services.kafka_consumer import start_kafka_consumer
 from app.routes.patient_ws import router as patient_ws_router
 from app.routes.admin_check import router as admin_check_router
 from app.routes.patient_discomfort import router as patient_discomfort_router
+from app.routes.facility_guidance import router as facility_guidance_router
 
 app = FastAPI(title="Juno AI Audio Service", version="1.0.0")
 
@@ -26,6 +27,7 @@ app.add_middleware(
         "X-Estimated-Wait",
         "X-Department-Name",
         "X-Facility-Name",
+        "X-Juno-Text"
     ],
 )
 
@@ -35,6 +37,7 @@ app.include_router(insights_router)
 app.include_router(patient_ws_router)
 app.include_router(admin_check_router)
 app.include_router(patient_discomfort_router)
+app.include_router(facility_guidance_router)
 
 @app.on_event("startup")
 async def startup_event():

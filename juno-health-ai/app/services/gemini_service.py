@@ -522,3 +522,106 @@ Return JSON only:
             "confidence": 0.5,
             "subjectVisitId": visit_id,
         }
+
+
+def build_facility_guidance_prompt(
+        facilities: list,
+        user_name: str,
+        history: list,
+        prompt: str,
+        symptom_description: str | None,
+) -> list[dict]:
+    facility_lines = []
+    for i, f in enumerate(facilities, 1):
+        services = ", ".join(s.name for s in f.services) or "Not listed"
+        nhf = "Yes" if f.nhfAccepted else "No"
+        facility_lines.append(
+            f"{i}. {f.name} ({f.facilityType})\n"
+            f"   Address: {f.address}, {f.parish}\n"
+            f"   Distance: {f.distanceKm:.1f} km\n"
+            f"   Avg wait: {f.avgWaitMinutes:.0f} minutes\n"
+            f"   NHF accepted: {nhf}\n"
+            f"   Services: {services}\n"
+            f"   Phone: {f.phone}"
+        )
+    facilities_block = "\n\n".join(facility_lines)
+
+    symptom_line = (
+        f"Reported symptoms: {symptom_description}"
+        if symptom_description
+        else "No symptoms provided."
+    )
+
+    system = f"""
+You are Juno, a calm, helpful medical assistant helping a patient in Jamaica decide
+which nearby facility to visit.
+
+Your job is to have a natural back-and-forth conversation, ask clarifying questions
+if needed, and ultimately recommend the best facility based on their situation.
+
+Guidelines:
+1. Be warm, clear, and concise — responses will be converted to speech.
+2. Do not diagnose or prescribe treatment.
+3. Consider distance, wait time, NHF acceptance, facility type, and available services.
+4. If the patient describes a serious or emergency condition, prioritise urgency over convenience.
+5. Ask at most one clarifying question per turn.
+6. When you have enough information, give a clear recommendation with a reason.
+7. Keep responses under 100 words — they will be read aloud.
+8. Never mention internal IDs or technical fields.
+9. Address the patient by first name if available.
+
+Patient name: {user_name}
+{symptom_line}
+
+NEARBY FACILITIES
+{facilities_block}
+""".strip()
+
+    messages = [{"role": "system", "content": system}]
+
+    for msg in history:
+        messages.append({"role": msg.role, "content": msg.content})
+
+    messages.append({"role": "user", "content": prompt})
+
+    return messages
+
+
+def generate_facility_guidance(
+        facilities: list,
+        user_name: str,
+        history: list,
+        prompt: str,
+        symptom_description: str | None,
+) -> str:
+    messages = build_facility_guidance_prompt(
+        facilities, user_name, history, prompt, symptom_description
+    )
+
+    # Flatten into a single prompt string for Gemini
+    conversation_text = ""
+    system_block = ""
+    for msg in messages:
+        if msg["role"] == "system":
+            system_block = msg["content"]
+        elif msg["role"] == "user":
+            conversation_text += f"\nPatient: {msg['content']}"
+        elif msg["role"] == "assistant":
+            conversation_text += f"\nJuno: {msg['content']}"
+
+    full_prompt = f"{system_block}\n\nConversation so far:{conversation_text}\n\nJuno:"
+
+    response = gemini_client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=full_prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.4,
+            top_p=0.9,
+            max_output_tokens=300,
+        ),
+    )
+
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("Gemini returned empty facility guidance")
+    return " ".join(text.split())
