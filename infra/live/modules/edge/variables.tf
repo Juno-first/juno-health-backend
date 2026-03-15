@@ -18,10 +18,18 @@ variable "hosted_zone_id" {
   type = string
 }
 
-variable "fqdn" {
+variable "app_fqdn" {
+  type = string
+}
+
+variable "ai_fqdn" {
   type = string
 }
 
 variable "app_port" {
+  type = number
+}
+
+variable "ai_port" {
   type = number
 }

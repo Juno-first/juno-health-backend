@@ -5,3 +5,7 @@ variable "name_prefix" {
 variable "app_port" {
   type = number
 }
+
+variable "ai_port" {
+  type = number
+}

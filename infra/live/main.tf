@@ -13,6 +13,7 @@ module "network" {
 
   name_prefix = local.name_prefix
   app_port    = local.app_port
+  ai_port     = local.ai_port
 }
 
 module "artifacts" {
@@ -29,8 +30,10 @@ module "edge" {
   subnet_ids     = module.network.public_subnet_ids
   alb_sg_id      = module.network.alb_security_group_id
   hosted_zone_id = var.hosted_zone_id
-  fqdn           = local.fqdn
+  app_fqdn       = local.app_fqdn
+  ai_fqdn        = local.ai_fqdn
   app_port       = local.app_port
+  ai_port        = local.ai_port
 }
 
 module "host" {
@@ -53,7 +56,13 @@ module "host" {
 }
 
 resource "aws_lb_target_group_attachment" "app" {
-  target_group_arn = module.edge.target_group_arn
+  target_group_arn = module.edge.app_target_group_arn
   target_id        = module.host.instance_id
   port             = local.app_port
+}
+
+resource "aws_lb_target_group_attachment" "ai" {
+  target_group_arn = module.edge.ai_target_group_arn
+  target_id        = module.host.instance_id
+  port             = local.ai_port
 }
