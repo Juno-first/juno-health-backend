@@ -5,6 +5,7 @@ on:
     branches:
       - develop
       - main
+  workflow_dispatch:
 
 jobs:
   setup_infra:
@@ -17,6 +18,7 @@ jobs:
       latest_tag: ${{ steps.target.outputs.latest_tag }}
       image_tag: ${{ steps.target.outputs.image_tag }}
       ecr_repository_url: ${{ steps.infra.outputs.ecr_repository_url }}
+      ai_ecr_repository_url: ${{ steps.infra.outputs.ai_ecr_repository_url }}
       deploy_bucket_name: ${{ steps.infra.outputs.deploy_bucket_name }}
       instance_id: ${{ steps.infra.outputs.instance_id }}
       public_api_url: ${{ steps.infra.outputs.public_api_url }}
@@ -96,16 +98,17 @@ jobs:
         shell: bash
         run: |
           echo "ecr_repository_url=$(terraform -chdir=infra/live output -raw ecr_repository_url)" >> "${GITHUB_OUTPUT}"
+          echo "ai_ecr_repository_url=$(terraform -chdir=infra/live output -raw ai_ecr_repository_url)" >> "${GITHUB_OUTPUT}"
           echo "deploy_bucket_name=$(terraform -chdir=infra/live output -raw deploy_bucket_name)" >> "${GITHUB_OUTPUT}"
           echo "instance_id=$(terraform -chdir=infra/live output -raw instance_id)" >> "${GITHUB_OUTPUT}"
           echo "public_api_url=$(terraform -chdir=infra/live output -raw public_api_url)" >> "${GITHUB_OUTPUT}"
 
-  build_and_push_app_image:
+  build_and_push_backend_image:
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
     needs: setup_infra
     outputs:
-      bundle_key: ${{ steps.bundle.outputs.bundle_key }}
+      backend_image_uri: ${{ steps.image.outputs.backend_image_uri }}
 
     steps:
       - name: Check out repository
@@ -126,7 +129,8 @@ jobs:
           aws ecr get-login-password --region "${{ vars.AWS_REGION }}" \
             | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
-      - name: Build and push app image
+      - name: Build and push backend image
+        id: image
         shell: bash
         run: |
           IMAGE_URI="${{ needs.setup_infra.outputs.ecr_repository_url }}:${{ needs.setup_infra.outputs.image_tag }}"
@@ -134,23 +138,102 @@ jobs:
           docker build -t "${IMAGE_URI}" -t "${LATEST_URI}" .
           docker push "${IMAGE_URI}"
           docker push "${LATEST_URI}"
+          echo "backend_image_uri=${IMAGE_URI}" >> "${GITHUB_OUTPUT}"
+
+  build_and_push_ai_image:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    needs: setup_infra
+    outputs:
+      ai_image_uri: ${{ steps.image.outputs.ai_image_uri }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        shell: bash
+        run: |
+          ECR_REGISTRY="${{ needs.setup_infra.outputs.ai_ecr_repository_url }}"
+          ECR_REGISTRY="${ECR_REGISTRY%%/*}"
+          aws ecr get-login-password --region "${{ vars.AWS_REGION }}" \
+            | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+      - name: Build and push AI image
+        id: image
+        shell: bash
+        run: |
+          IMAGE_URI="${{ needs.setup_infra.outputs.ai_ecr_repository_url }}:${{ needs.setup_infra.outputs.image_tag }}"
+          LATEST_URI="${{ needs.setup_infra.outputs.ai_ecr_repository_url }}:${{ needs.setup_infra.outputs.latest_tag }}"
+          docker build -t "${IMAGE_URI}" -t "${LATEST_URI}" ./juno-health-ai
+          docker push "${IMAGE_URI}"
+          docker push "${LATEST_URI}"
+          echo "ai_image_uri=${IMAGE_URI}" >> "${GITHUB_OUTPUT}"
+
+  build_deployment_bundle:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    needs:
+      - setup_infra
+      - build_and_push_backend_image
+      - build_and_push_ai_image
+    outputs:
+      bundle_key: ${{ steps.bundle.outputs.bundle_key }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Render runtime environment
         shell: bash
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
-          APP_IMAGE: ${{ needs.setup_infra.outputs.ecr_repository_url }}:${{ needs.setup_infra.outputs.image_tag }}
+          APP_IMAGE: ${{ needs.build_and_push_backend_image.outputs.backend_image_uri }}
+          AI_APP_IMAGE: ${{ needs.build_and_push_ai_image.outputs.ai_image_uri }}
           APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          AI_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
           APP_JWT_EXPIRATION_MS: ${{ vars.APP_JWT_EXPIRATION_MS }}
           APP_CORS_ALLOWED_ORIGINS: ${{ needs.setup_infra.outputs.frontend_origin }}
+          AI_GEMINI_MODEL: ${{ vars.AI_GEMINI_MODEL }}
+          AI_TTS_VOICE_NAME: ${{ vars.AI_TTS_VOICE_NAME }}
+          AI_TTS_LANGUAGE_CODE: ${{ vars.AI_TTS_LANGUAGE_CODE }}
+          AI_TTS_SPEAKING_RATE: ${{ vars.AI_TTS_SPEAKING_RATE }}
+          AI_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+          AI_KAFKA_QUEUE_TOPIC: ${{ vars.AI_KAFKA_QUEUE_TOPIC }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
         run: |
           mkdir -p build/deploy
           bash scripts/render-runtime-env.sh build/deploy/.env.aws
 
+      - name: Write AI credentials file
+        shell: bash
+        env:
+          AI_GOOGLE_CREDENTIALS_JSON: ${{ secrets.AI_GOOGLE_CREDENTIALS_JSON }}
+        run: |
+          if [[ -z "${AI_GOOGLE_CREDENTIALS_JSON}" ]]; then
+            echo "missing required secret: AI_GOOGLE_CREDENTIALS_JSON" >&2
+            exit 1
+          fi
+
+          printf '%s' "${AI_GOOGLE_CREDENTIALS_JSON}" > build/deploy/credentials.json
+
       - name: Build deployment bundle
-        run: bash scripts/build-deploy-bundle.sh build/deploy/deploy-bundle.tar.gz build/deploy/.env.aws
+        run: bash scripts/build-deploy-bundle.sh build/deploy/deploy-bundle.tar.gz build/deploy/.env.aws build/deploy/credentials.json
 
       - name: Upload deployment bundle
         id: bundle
@@ -165,7 +248,7 @@ jobs:
     environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
     needs:
       - setup_infra
-      - build_and_push_app_image
+      - build_deployment_bundle
 
     steps:
       - name: Configure AWS credentials
@@ -183,7 +266,7 @@ jobs:
             "commands": [
               "set -euo pipefail",
               "sudo rm -rf /opt/healthapp/current/*",
-              "aws s3 cp s3://${{ needs.setup_infra.outputs.deploy_bucket_name }}/${{ needs.build_and_push_app_image.outputs.bundle_key }} /tmp/deploy-bundle.tar.gz",
+              "aws s3 cp s3://${{ needs.setup_infra.outputs.deploy_bucket_name }}/${{ needs.build_deployment_bundle.outputs.bundle_key }} /tmp/deploy-bundle.tar.gz",
               "sudo tar -xzf /tmp/deploy-bundle.tar.gz -C /opt/healthapp/current",
               "sudo bash /opt/healthapp/current/host-deploy.sh"
             ]
@@ -198,9 +281,59 @@ jobs:
             --query 'Command.CommandId' \
             --output text)"
 
-          aws ssm wait command-executed \
+          for attempt in $(seq 1 180); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "${command_id}" \
+              --instance-id "${{ needs.setup_infra.outputs.instance_id }}" \
+              --query 'Status' \
+              --output text 2>/dev/null || true)"
+
+            case "${status}" in
+              Success)
+                aws ssm get-command-invocation \
+                  --command-id "${command_id}" \
+                  --instance-id "${{ needs.setup_infra.outputs.instance_id }}" \
+                  --query 'StandardOutputContent' \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                echo "SSM command ended with status: ${status}" >&2
+                aws ssm get-command-invocation \
+                  --command-id "${command_id}" \
+                  --instance-id "${{ needs.setup_infra.outputs.instance_id }}" \
+                  --query 'StandardOutputContent' \
+                  --output text || true
+                aws ssm get-command-invocation \
+                  --command-id "${command_id}" \
+                  --instance-id "${{ needs.setup_infra.outputs.instance_id }}" \
+                  --query 'StandardErrorContent' \
+                  --output text >&2 || true
+                exit 1
+                ;;
+              Pending|InProgress|Delayed|"")
+                echo "SSM deploy status: ${status:-Pending} (attempt ${attempt}/180)"
+                sleep 10
+                ;;
+              *)
+                echo "Unexpected SSM command status: ${status}" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "SSM deploy command did not finish within 30 minutes" >&2
+          aws ssm get-command-invocation \
             --command-id "${command_id}" \
-            --instance-id "${{ needs.setup_infra.outputs.instance_id }}"
+            --instance-id "${{ needs.setup_infra.outputs.instance_id }}" \
+            --query 'StandardOutputContent' \
+            --output text || true
+          aws ssm get-command-invocation \
+            --command-id "${command_id}" \
+            --instance-id "${{ needs.setup_infra.outputs.instance_id }}" \
+            --query 'StandardErrorContent' \
+            --output text >&2 || true
+          exit 1
 
       - name: Smoke test public health endpoint
         run: curl --fail --retry 10 --retry-delay 15 "${{ needs.setup_infra.outputs.public_api_url }}/actuator/health"

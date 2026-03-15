@@ -2,7 +2,6 @@
 set -euo pipefail
 
 deploy_root="/opt/healthapp/current"
-credentials_path="${deploy_root}/credentials.json"
 
 ensure_docker_prereqs() {
   local should_install=0
@@ -43,30 +42,15 @@ ensure_docker_prereqs
 
 cd "${deploy_root}"
 
-if [[ ! -f "${credentials_path}" ]]; then
-  echo "missing AI credentials file at ${credentials_path}" >&2
-  exit 1
-fi
-
 set -a
 . ./.env.aws
 set +a
 
-login_ecr_registry() {
-  local registry="$1"
+ecr_registry="${APP_IMAGE%%/*}"
 
-  aws ecr get-login-password --region "${AWS_REGION}" \
-    | docker login --username AWS --password-stdin "${registry}"
-}
+aws ecr get-login-password --region "${AWS_REGION}" \
+  | docker login --username AWS --password-stdin "${ecr_registry}"
 
-declare -A registries=()
-registries["${APP_IMAGE%%/*}"]=1
-registries["${AI_APP_IMAGE%%/*}"]=1
-
-for registry in "${!registries[@]}"; do
-  login_ecr_registry "${registry}"
-done
-
-docker compose --env-file .env.aws -f docker-compose.yml pull app ai
+docker compose --env-file .env.aws -f docker-compose.yml pull app
 docker compose --env-file .env.aws -f docker-compose.yml up -d --remove-orphans
 docker image prune -f

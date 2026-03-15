@@ -308,6 +308,36 @@ services:
       retries: 10
       start_period: 100s
 
+  ai:
+    image: ${AI_APP_IMAGE:-healthapp-ai:local}
+    build:
+      context: ./juno-health-ai
+      dockerfile: Dockerfile
+    container_name: healthapp_ai
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: ${AI_GOOGLE_APPLICATION_CREDENTIALS:-/opt/healthapp/current/credentials.json}
+      GEMINI_MODEL: ${AI_GEMINI_MODEL:-gemini-2.5-flash-lite}
+      TTS_VOICE_NAME: ${AI_TTS_VOICE_NAME:-en-US-Chirp3-HD-Kore}
+      TTS_LANGUAGE_CODE: ${AI_TTS_LANGUAGE_CODE:-en-US}
+      TTS_SPEAKING_RATE: ${AI_TTS_SPEAKING_RATE:-1.0}
+      KAFKA_BOOTSTRAP_SERVERS: ${AI_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      KAFKA_QUEUE_TOPIC: ${AI_KAFKA_QUEUE_TOPIC:-department.queue.snapshot}
+      JWT_SECRET: ${AI_JWT_SECRET:-your-super-secret-key-that-is-at-least-32-characters-long}
+    volumes:
+      - ${AI_CREDENTIALS_HOST_PATH:-./juno-health-ai/credentials.json}:${AI_GOOGLE_APPLICATION_CREDENTIALS:-/opt/healthapp/current/credentials.json}:ro
+    networks:
+      - healthapp_network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 30s
+      retries: 10
+      start_period: 30s
+
 volumes:
   postgres_data:
   pgadmin_data:
