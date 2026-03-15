@@ -18,7 +18,6 @@ temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
 
 cp docker-compose.yml "${temp_dir}/docker-compose.yml"
-cp docker-compose.aws.yml "${temp_dir}/docker-compose.aws.yml"
 cp "${runtime_env_file}" "${temp_dir}/.env.aws"
 cp scripts/host-deploy.sh "${temp_dir}/host-deploy.sh"
 
