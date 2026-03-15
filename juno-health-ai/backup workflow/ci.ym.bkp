@@ -1,0 +1,49 @@
+# name: CI
+
+# on:
+#   push:
+#   pull_request:
+
+# jobs:
+#   build-and-test:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@v4
+
+#       - name: Set up Java
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: temurin
+#           java-version: "21"
+
+#       # Temporarily disabled while the Spring Boot test context issue is unresolved.
+#       # - name: Run tests
+#       #   run: ./mvnw test
+
+#       - name: Build Docker image
+#         run: docker build -t healthapp-ci:${{ github.sha }} .
+
+#   terraform:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Check out repository
+#         uses: actions/checkout@v4
+
+#       - name: Set up Terraform
+#         uses: hashicorp/setup-terraform@v3
+
+#       - name: Check Terraform formatting
+#         run: terraform fmt -check -recursive
+
+#       - name: Validate bootstrap Terraform
+#         run: |
+#           terraform -chdir=infra/bootstrap init -backend=false
+#           terraform -chdir=infra/bootstrap validate
+
+#       - name: Validate live Terraform
+#         run: |
+#           terraform -chdir=infra/live init -backend=false
+#           terraform -chdir=infra/live validate

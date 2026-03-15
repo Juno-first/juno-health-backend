@@ -18,16 +18,6 @@ output "ecr_repository_url" {
   value       = module.artifacts.ecr_repository_url
 }
 
-output "ai_ecr_repository_url" {
-  description = "ECR repository URL for the AI image."
-  value       = module.artifacts.ai_ecr_repository_url
-}
-
-output "ai_ecr_repository_arn" {
-  description = "ECR repository ARN for the AI image."
-  value       = module.artifacts.ai_ecr_repository_arn
-}
-
 output "deploy_bucket_name" {
   description = "S3 bucket used to publish deployment bundles."
   value       = module.artifacts.deploy_bucket_name
