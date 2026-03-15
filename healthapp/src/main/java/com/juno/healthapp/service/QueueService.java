@@ -28,6 +28,7 @@ public class QueueService {
     private final QueueOverrideDAO queueOverrideDAO;
     private final RoomDAO roomDAO;
     private final QueueKafkaPublisher queueKafkaPublisher;
+    private final PriorityScoreService priorityScoreService;
 
     private static final int AVG_CONSULTATION_MINUTES = 15;
 
@@ -43,7 +44,6 @@ public class QueueService {
             throw new IllegalStateException("Patient already has an active visit");
         });
 
-        // Resolve department directly from token — no more facilityId or departmentId needed
         Department department = resolveDepartment(request);
         Facility facility = department.getFacility();
 
@@ -58,34 +58,89 @@ public class QueueService {
                 .build();
         visit = visitDAO.save(visit);
 
-        int placeholderScore = 50;
-        String priorityTier = resolvePriorityTier(placeholderScore);
-        int position = queueEntryDAO.getNextPosition(department);
+        // ── Score + tier ──────────────────────────────────────────────────────
+        ScoreResult scoreResult = priorityScoreService.calculate(
+                request.symptomSeverity(),
+                request.painLevel(),
+                request.symptomCategories(),
+                request.symptomDuration()
+        );
+        int score = scoreResult.score();
+        String priorityTier = resolvePriorityTier(score);
+
+        // ── Find correct insert position ──────────────────────────────────────
+        // Get current queue ordered by position
+        List<QueueEntry> currentQueue = queueEntryDAO.findByDepartmentOrdered(department);
+
+        // Insert after the last entry with an equal or higher score,
+        // before the first entry with a lower score
+        int insertPosition = currentQueue.stream()
+                .filter(e -> e.getAiPriorityScore() >= score)
+                .mapToInt(QueueEntry::getPosition)
+                .max()
+                .orElse(0) + 1;
+
+        // Shift everyone from insertPosition downward by 1
+        if (insertPosition <= currentQueue.size()) {
+            queueEntryDAO.incrementPositionsFrom(department, insertPosition);
+        }
+
         int queueDepth = queueEntryDAO.countActiveInDepartment(department);
 
         QueueEntry queueEntry = QueueEntry.builder()
                 .visit(visit)
                 .patient(patient)
                 .department(department)
-                .position(position)
-                .aiPriorityScore(placeholderScore)
+                .position(insertPosition)
+                .aiPriorityScore(score)
                 .priorityTier(priorityTier)
                 .symptomSeverity(request.symptomSeverity())
                 .painLevel(request.painLevel())
                 .symptomCategories(request.symptomCategories())
                 .symptomDuration(request.symptomDuration())
                 .additionalNotes(request.additionalNotes())
-                .scoreBreakdown(Map.of(
-                        "placeholder", true,
-                        "note", "AI scoring pending implementation"
-                ))
+                .scoreBreakdown(scoreResult.breakdown())
                 .lastScoredAt(LocalDateTime.now())
                 .lastPositionUpdatedAt(LocalDateTime.now())
                 .build();
 
         queueEntry = queueEntryDAO.save(queueEntry);
 
-        int estimatedWait = (position - 1) * AVG_CONSULTATION_MINUTES;
+        int estimatedWait = (insertPosition - 1) * AVG_CONSULTATION_MINUTES;
+
+        // ── Notify patients who got bumped down ───────────────────────────────
+        LocalDateTime now = LocalDateTime.now();
+        for (QueueEntry existing : currentQueue) {
+            if (existing.getPosition() >= insertPosition) {
+                int newPos = existing.getPosition() + 1;
+                int bumpedWait = (newPos - 1) * AVG_CONSULTATION_MINUTES;
+
+                QueueUpdateEvent bumpedEvent = new QueueUpdateEvent(
+                        department.getId(),
+                        existing.getPatient().getId(),
+                        existing.getVisit().getId(),
+                        existing.getId(),
+                        existing.getPatient().getFullName(),
+                        newPos,
+                        queueDepth + 1,
+                        existing.getPriorityTier(),
+                        existing.getAiPriorityScore(),
+                        bumpedWait,
+                        existing.getSymptomSeverity(),
+                        existing.getPainLevel(),
+                        existing.getSymptomCategories(),
+                        existing.getSymptomDuration(),
+                        existing.getVisit().getPresentingComplaint(),
+                        existing.getAdditionalNotes(),
+                        existing.getVisit().getStatus(),
+                        existing.getVisit().getCheckedInAt(),
+                        null, null, null,
+                        "QUEUE_UPDATED"
+                );
+
+                notificationService.notifyPatient(existing.getPatient().getId(), bumpedEvent);
+            }
+        }
 
         QueueUpdateEvent event = new QueueUpdateEvent(
                 department.getId(),
@@ -93,10 +148,10 @@ public class QueueService {
                 visit.getId(),
                 queueEntry.getId(),
                 patient.getFullName(),
-                position,
+                insertPosition,
                 queueDepth + 1,
                 priorityTier,
-                placeholderScore,
+                score,
                 estimatedWait,
                 queueEntry.getSymptomSeverity(),
                 queueEntry.getPainLevel(),
@@ -106,9 +161,7 @@ public class QueueService {
                 queueEntry.getAdditionalNotes(),
                 visit.getStatus(),
                 visit.getCheckedInAt(),
-                null,
-                null,
-                null,
+                null, null, null,
                 "CHECKED_IN"
         );
 
@@ -119,10 +172,10 @@ public class QueueService {
         return new CheckInResponse(
                 visit.getId(),
                 queueEntry.getId(),
-                position,
+                insertPosition,
                 queueDepth + 1,
                 priorityTier,
-                placeholderScore,
+                score,
                 estimatedWait,
                 facility.getName(),
                 department.getName(),
@@ -130,9 +183,7 @@ public class QueueService {
                 department.getQrToken(),
                 department.getCheckinCode(),
                 visit.getCheckedInAt(),
-                null,
-                null,
-                null
+                null, null, null
         );
     }
 
@@ -750,7 +801,8 @@ public class QueueService {
     }
 
     private String resolvePriorityTier(int score) {
-        if (score >= 85) return "CRITICAL";
+        if (score >= 95) return "RESUSCITATION";
+        if (score >= 85) return "EMERGENCY";
         if (score >= 60) return "URGENT";
         if (score >= 40) return "SEMI_URGENT";
         return "NON_URGENT";

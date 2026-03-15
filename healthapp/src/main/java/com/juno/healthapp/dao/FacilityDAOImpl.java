@@ -11,6 +11,7 @@ import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -88,6 +89,34 @@ public class FacilityDAOImpl implements FacilityDAO {
                 .where(facilityService.facility.eq(facility)
                         .and(facilityService.isActive.isTrue()))
                 .fetch();
+    }
+
+    @Override
+    public List<Facility> findNearest(BigDecimal lat, BigDecimal lon, double radiusKm, int limit) {
+        // Haversine via native SQL — QueryDSL doesn't support trig natively
+        return entityManager.createNativeQuery("""
+            SELECT *,
+                   6371 * 2 * ASIN(SQRT(
+                       POWER(SIN(RADIANS(:lat - latitude) / 2), 2) +
+                       COS(RADIANS(latitude)) * COS(RADIANS(:lat)) *
+                       POWER(SIN(RADIANS(:lon - longitude) / 2), 2)
+                   )) AS distance_km
+            FROM facilities
+            WHERE latitude IS NOT NULL
+              AND longitude IS NOT NULL
+              AND 6371 * 2 * ASIN(SQRT(
+                       POWER(SIN(RADIANS(:lat - latitude) / 2), 2) +
+                       COS(RADIANS(latitude)) * COS(RADIANS(:lat)) *
+                       POWER(SIN(RADIANS(:lon - longitude) / 2), 2)
+                   )) <= :radius
+            ORDER BY distance_km ASC
+            LIMIT :limit
+            """, Facility.class)
+                .setParameter("lat", lat)
+                .setParameter("lon", lon)
+                .setParameter("radius", radiusKm)
+                .setParameter("limit", limit)
+                .getResultList();
     }
 
     @Override
