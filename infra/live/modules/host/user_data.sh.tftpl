@@ -16,5 +16,5 @@ chown -R ec2-user:ec2-user /opt/healthapp
 
 cat >/etc/profile.d/healthapp.sh <<'EOF'
 export AWS_REGION=${aws_region}
-export APP_CORS_ALLOWED_ORIGINS="http://localhost:8080"
+export APP_CORS_ALLOWED_ORIGINS=${app_cors_allowed_origins}
 EOF

@@ -83,8 +83,8 @@ resource "aws_instance" "this" {
   }
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    aws_region      = var.aws_region
-    frontend_origin = var.frontend_origin
+    aws_region               = var.aws_region
+    app_cors_allowed_origins = var.frontend_origin
   })
 
   tags = {
