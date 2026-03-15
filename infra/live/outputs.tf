@@ -5,7 +5,12 @@ output "alb_dns_name" {
 
 output "public_api_url" {
   description = "Public HTTPS URL for the deployed backend."
-  value       = "https://${local.fqdn}"
+  value       = "https://${local.app_fqdn}"
+}
+
+output "public_ai_url" {
+  description = "Public HTTPS URL for the deployed AI service."
+  value       = "https://${local.ai_fqdn}"
 }
 
 output "instance_id" {
