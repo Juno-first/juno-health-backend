@@ -112,6 +112,14 @@ services:
     entrypoint: ["bash", "-c"]
     command:
       - |
+        /opt/kafka/bin/kafka-topics.sh \
+          --create \
+          --if-not-exists \
+          --topic department.queue.snapshot \
+          --bootstrap-server kafka:29092 \
+          --partitions 1 \
+          --replication-factor 1
+
         /opt/kafka/bin/kafka-configs.sh \
           --alter \
           --bootstrap-server kafka:29092 \
@@ -119,6 +127,26 @@ services:
           --entity-name client_portfolio \
           --add-config cleanup.policy=compact,retention.ms=-1 || \
           echo 'Topic not yet created — compaction will need to be applied after ksqlDB creates it.'
+
+  # kafka-topic-consumer:
+  #   image: apache/kafka:4.1.0
+  #   container_name: healthapp_kafka_topic_consumer
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #     kafka-setup:
+  #       condition: service_started
+  #   profiles:
+  #     - debug
+  #   networks:
+  #     - healthapp_network
+  #   entrypoint: ["bash", "-c"]
+  #   command:
+  #     - |
+  #       /opt/kafka/bin/kafka-console-consumer.sh \
+  #         --topic department.queue.snapshot \
+  #         --from-beginning \
+  #         --bootstrap-server kafka:29092
 
   # ─────────────────────────────────────────────
   # Confluent platform services
@@ -327,6 +355,9 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: ${AI_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       KAFKA_QUEUE_TOPIC: ${AI_KAFKA_QUEUE_TOPIC:-department.queue.snapshot}
       JWT_SECRET: ${AI_JWT_SECRET:-your-super-secret-key-that-is-at-least-32-characters-long}
+      GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${AI_OPENAI_API_KEY:-}
+      JWT_ALGORITHM: ${AI_JWT_ALGORITHM:-HS256}
     volumes:
       - ${AI_CREDENTIALS_HOST_PATH:-./juno-health-ai/credentials.json}:${AI_GOOGLE_APPLICATION_CREDENTIALS:-/opt/healthapp/current/credentials.json}:ro
     networks:
