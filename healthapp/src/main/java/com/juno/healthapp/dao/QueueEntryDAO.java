@@ -17,6 +17,7 @@ public interface QueueEntryDAO {
     Optional<QueueEntry> findActiveByPatient(Patient patient);
     int countActiveInDepartment(Department department);
     int getNextPosition(Department department);
+    void incrementPositionsFrom(Department department, int fromPosition);
     void decrementPositionsAfter(Department department, int position);
     void delete(QueueEntry queueEntry);
 }

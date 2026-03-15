@@ -6,11 +6,13 @@ import com.juno.healthapp.dao.VisitDAO;
 import com.juno.healthapp.dto.*;
 import com.juno.healthapp.entity.Facility;
 import com.juno.healthapp.entity.FacilityService;
+import com.juno.healthapp.httpclient.GeoapifyRoutingClient;
 import com.juno.healthapp.util.FacilityCodeGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -24,6 +26,7 @@ public class FacilitiesService {
     private final FacilityServiceDAO facilityServiceDAO;
     private final FacilityCodeGenerator codeGenerator;
     private final VisitDAO visitDAO;
+    private final GeoapifyRoutingClient routingClient;
 
     private static final int AVG_CONSULTATION_MINUTES = 15;
 
@@ -132,6 +135,41 @@ public class FacilitiesService {
                 .collect(Collectors.toList());
     }
 
+    public List<FacilityResponse> getNearestFacilities(
+            BigDecimal lat, BigDecimal lon,
+            double radiusKm, int limit) {
+
+        List<Facility> facilities = facilityDAO.findNearest(lat, lon, radiusKm, limit);
+
+        return facilities.stream()
+                .map(f -> {
+                    double distance = haversine(lat, lon, f.getLatitude(), f.getLongitude());
+
+                    List<FacilityServiceResponse> services = facilityServiceDAO
+                            .findByFacilityId(f.getId())
+                            .stream()
+                            .map(s -> new FacilityServiceResponse(s.getId(), s.getName(), s.getDescription()))
+                            .toList();
+
+                    RouteInfo route = routingClient.getRoute(lat, lon, f.getLatitude(), f.getLongitude());
+
+                    return toResponse(f, services, calculateAvgWait(f.getId()),
+                            Math.round(distance * 10.0) / 10.0, route);
+                })
+                .toList();
+    }
+
+    private double haversine(BigDecimal lat1, BigDecimal lon1,
+                             BigDecimal lat2, BigDecimal lon2) {
+        final int R = 6371;
+        double dLat = Math.toRadians(lat2.subtract(lat1).doubleValue());
+        double dLon = Math.toRadians(lon2.subtract(lon1).doubleValue());
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1.doubleValue()))
+                * Math.cos(Math.toRadians(lat2.doubleValue()))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
     private FacilityResponse toResponse(Facility facility, List<FacilityServiceResponse> services, int avgWait) {
         return new FacilityResponse(
                 facility.getId(),
@@ -148,7 +186,53 @@ public class FacilitiesService {
                 facility.getQrToken(),
                 facility.getCreatedAt(),
                 avgWait,
-                services
+                services,
+                null,
+                null
+        );
+    }
+
+    private FacilityResponse toResponse(Facility facility, List<FacilityServiceResponse> services, int avgWait, Double distanceKm) {
+        return new FacilityResponse(
+                facility.getId(),
+                facility.getName(),
+                facility.getDescription(),
+                facility.getFacilityType(),
+                facility.getAddress(),
+                facility.getParish(),
+                facility.getLatitude(),
+                facility.getLongitude(),
+                facility.getPhone(),
+                facility.getNhfAccepted(),
+                facility.getCheckinCode(),
+                facility.getQrToken(),
+                facility.getCreatedAt(),
+                avgWait,
+                services,
+                distanceKm,
+                null
+        );
+    }
+    private FacilityResponse toResponse(Facility facility, List<FacilityServiceResponse> services,
+                                        int avgWait, Double distanceKm, RouteInfo route) {
+        return new FacilityResponse(
+                facility.getId(),
+                facility.getName(),
+                facility.getDescription(),
+                facility.getFacilityType(),
+                facility.getAddress(),
+                facility.getParish(),
+                facility.getLatitude(),
+                facility.getLongitude(),
+                facility.getPhone(),
+                facility.getNhfAccepted(),
+                facility.getCheckinCode(),
+                facility.getQrToken(),
+                facility.getCreatedAt(),
+                avgWait,
+                services,
+                distanceKm,
+                route
         );
     }
 }

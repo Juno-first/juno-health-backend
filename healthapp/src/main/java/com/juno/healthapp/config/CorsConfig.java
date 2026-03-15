@@ -18,7 +18,8 @@ public class CorsConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:3000",    // React default
                 "http://localhost:5173",    // Vite default
-                "http://localhost:4200"     // Angular default
+                "http://localhost:4200",
+                "https://juno-health-frontend.vercel.app/"
         ));
 
         config.setAllowedMethods(List.of(

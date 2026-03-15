@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -66,4 +67,12 @@ public class FacilityController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/nearby")
+    public ResponseEntity<List<FacilityResponse>> getNearbyFacilities(
+            @RequestParam BigDecimal lat,
+            @RequestParam BigDecimal lon,
+            @RequestParam(defaultValue = "10") double radiusKm,
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(facilityService.getNearestFacilities(lat, lon, radiusKm, limit));
+    }
 }
