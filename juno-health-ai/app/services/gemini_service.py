@@ -464,3 +464,61 @@ Return JSON only:
         ),
     )
     return (response.text or "").strip()
+
+def evaluate_patient_discomfort(visit_id: str, message: str) -> dict:
+    prompt = f"""
+A patient in an emergency queue has voluntarily reported discomfort or a concern.
+
+Patient visit ID: {visit_id}
+Patient message: {message}
+
+Evaluate this message and produce one operational insight for the clinical staff dashboard.
+
+Rules:
+1. Return JSON only.
+2. Use type PATIENT_RISK or DETERIORATION_RISK if the message suggests worsening condition.
+3. Use ESCALATION_REQUIRED if the message suggests immediate attention is needed.
+4. Use PATIENT_CHECK_RESULT for general discomfort or minor concerns.
+5. Set severity honestly — do not underplay distressing language.
+6. Keep title under 5 words, message under 200 characters.
+7. Do not diagnose or recommend treatment.
+8. Quote key words from the patient's message naturally in the insight message.
+9. Always include subjectVisitId.
+
+Return JSON only:
+{{
+  "type": "PATIENT_RISK | DETERIORATION_RISK | ESCALATION_REQUIRED | PATIENT_CHECK_RESULT",
+  "severity": "LOW | MODERATE | HIGH | CRITICAL",
+  "title": "short title",
+  "message": "one concise sentence summarising what the patient reported",
+  "confidence": 0.0,
+  "subjectVisitId": "{visit_id}"
+}}
+""".strip()
+
+    response = gemini_client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            top_p=0.9,
+            max_output_tokens=300,
+            response_mime_type="application/json",
+        ),
+    )
+
+    text = (response.text or "").strip()
+
+    try:
+        json_text = extract_json_object(text)
+        return json.loads(json_text)
+    except Exception:
+        logger.exception("Failed to parse discomfort evaluation")
+        return {
+            "type": "PATIENT_CHECK_RESULT",
+            "severity": "MODERATE",
+            "title": "Patient reported concern",
+            "message": f"Patient submitted: {message[:120]}",
+            "confidence": 0.5,
+            "subjectVisitId": visit_id,
+        }
