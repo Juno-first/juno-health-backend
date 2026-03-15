@@ -23,7 +23,7 @@ done
 cat >"${output_file}" <<EOF
 AWS_REGION=${AWS_REGION}
 APP_IMAGE=${APP_IMAGE}
-APP_JWT_SECRET=ci-test-secret-key-with-at-least-32-characters
+APP_JWT_SECRET=your-super-secret-key-that-is-at-least-32-characters-long
 APP_JWT_EXPIRATION_MS=86400000
 APP_CORS_ALLOWED_ORIGINS="http://localhost:8080"
 POSTGRES_DB=healthapp
