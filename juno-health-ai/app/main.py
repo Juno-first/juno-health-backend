@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import AI_CORS_ALLOWED_ORIGINS
 from app.routes.health import router as health_router
 from app.routes.audio import router as audio_router
 from app.routes.insights import router as insights_router
@@ -13,10 +14,7 @@ app = FastAPI(title="Juno AI Audio Service", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=AI_CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

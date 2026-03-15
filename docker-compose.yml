@@ -358,8 +358,11 @@ services:
       GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${AI_OPENAI_API_KEY:-}
       JWT_ALGORITHM: ${AI_JWT_ALGORITHM:-HS256}
+      AI_CORS_ALLOWED_ORIGINS: ${AI_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     volumes:
       - ${AI_CREDENTIALS_HOST_PATH:-./juno-health-ai/credentials.json}:${AI_GOOGLE_APPLICATION_CREDENTIALS:-/opt/healthapp/current/credentials.json}:ro
+    ports:
+      - "8000:8000"
     networks:
       - healthapp_network
     healthcheck:
