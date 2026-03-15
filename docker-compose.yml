@@ -327,6 +327,9 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: ${AI_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       KAFKA_QUEUE_TOPIC: ${AI_KAFKA_QUEUE_TOPIC:-department.queue.snapshot}
       JWT_SECRET: ${AI_JWT_SECRET:-your-super-secret-key-that-is-at-least-32-characters-long}
+      GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${AI_OPENAI_API_KEY:-}
+      JWT_ALGORITHM: ${AI_JWT_ALGORITHM:-HS256}
     volumes:
       - ${AI_CREDENTIALS_HOST_PATH:-./juno-health-ai/credentials.json}:${AI_GOOGLE_APPLICATION_CREDENTIALS:-/opt/healthapp/current/credentials.json}:ro
     networks:
