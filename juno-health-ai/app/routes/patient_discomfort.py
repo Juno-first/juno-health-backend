@@ -27,7 +27,7 @@ async def report_discomfort(
                 "type": "QUEUE_INSIGHTS",
                 "data": {
                     "departmentId": data.departmentId,
-                    "source": "PATIENT_REPORT",
+                    "source": "PATIENT_RISK",
                     "insights": [insight],
                 },
             },
