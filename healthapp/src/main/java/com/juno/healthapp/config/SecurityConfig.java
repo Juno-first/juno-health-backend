@@ -33,22 +33,32 @@ public class SecurityConfig {
                         // Public
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
-                        
+                        .requestMatchers("/error").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
+
+                        // Facilities
                         .requestMatchers(HttpMethod.GET, "/api/v1/facilities/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/facilities/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/facilities/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/facilities/**").hasRole("ADMIN")
 
+                        // Departments
                         .requestMatchers(HttpMethod.GET, "/api/v1/departments/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/departments/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/departments/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/departments/**").hasRole("ADMIN")
 
-
+                        // Queue - patient routes
                         .requestMatchers(HttpMethod.POST, "/api/v1/queue/checkin").hasRole("PATIENT")
                         .requestMatchers(HttpMethod.GET, "/api/v1/queue/status").hasRole("PATIENT")
                         .requestMatchers(HttpMethod.POST, "/api/v1/queue/leave").hasRole("PATIENT")
 
+                        // Queue - admin/staff control routes
+                        .requestMatchers(HttpMethod.GET, "/api/v1/queue/department/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/queue/call/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/queue/discharge/**").hasRole("ADMIN")
+
+                        .requestMatchers("/api/v1/onboarding/**").hasRole("PATIENT")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

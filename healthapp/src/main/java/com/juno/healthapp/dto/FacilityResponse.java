@@ -20,5 +20,7 @@ public record FacilityResponse(
         String qrToken,
         LocalDateTime createdAt,
         Integer avgWaitMinutes,
-        List<FacilityServiceResponse> services
+        List<FacilityServiceResponse> services,
+        Double distanceKm,
+        RouteInfo route
 ) {}
