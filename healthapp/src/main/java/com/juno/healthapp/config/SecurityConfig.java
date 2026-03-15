@@ -36,6 +36,10 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/ws/**").permitAll()
 
+                        .requestMatchers("/swagger-ui/**",
+                                        "/swagger-ui.html",
+                                        "/v3/api-docs/**").permitAll()
+
                         // Facilities
                         .requestMatchers(HttpMethod.GET, "/api/v1/facilities/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/facilities/**").hasRole("ADMIN")

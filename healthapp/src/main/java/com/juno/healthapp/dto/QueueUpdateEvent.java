@@ -3,6 +3,7 @@ package com.juno.healthapp.dto;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 public record QueueUpdateEvent(
         UUID departmentId,
@@ -22,9 +23,12 @@ public record QueueUpdateEvent(
         String presentingComplaint,
         String additionalNotes,
         String status,
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", shape = JsonFormat.Shape.STRING)
         LocalDateTime checkedInAt,
         String roomName,
         String assignedStaffName,
         String assignedStaffRole,
-        String eventType
+        String eventType,
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", shape = JsonFormat.Shape.STRING)
+        LocalDateTime eventTimestamp  // ← added
 ) {}
