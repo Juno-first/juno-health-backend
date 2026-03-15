@@ -137,7 +137,8 @@ public class QueueService {
                         existing.getVisit().getStatus(),
                         existing.getVisit().getCheckedInAt(),
                         null, null, null,
-                        "QUEUE_UPDATED"
+                        "QUEUE_UPDATED",
+                        LocalDateTime.now()
                 );
 
                 notificationService.notifyPatient(existing.getPatient().getId(), bumpedEvent);
