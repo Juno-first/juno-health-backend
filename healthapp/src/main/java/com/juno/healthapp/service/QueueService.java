@@ -28,6 +28,8 @@ public class QueueService {
     private final QueueOverrideDAO queueOverrideDAO;
     private final RoomDAO roomDAO;
     private final QueueKafkaPublisher queueKafkaPublisher;
+    private final PatientKafkaPublisher patientKafkaPublisher;
+
 
     private static final int AVG_CONSULTATION_MINUTES = 15;
 
@@ -109,12 +111,16 @@ public class QueueService {
                 null,
                 null,
                 null,
-                "CHECKED_IN"
+                "CHECKED_IN",
+                LocalDateTime.now()
         );
 
         publishDepartmentSnapshot(department, "CHECKED_IN");
         notificationService.notifyPatient(patient.getId(), event);
         notificationService.notifyDepartmentQueue(department.getId(), event);
+
+        // Publish detailed event to ClickHouse via patient_queue topic
+        patientKafkaPublisher.publishQueueUpdateEvent(event);
 
         return new CheckInResponse(
                 visit.getId(),
@@ -204,7 +210,8 @@ public class QueueService {
                 room.getName(),
                 room.getAssignedStaff().getFullName(),
                 room.getAssignedStaff().getRole(),
-                "CALLED"
+                "CALLED",
+                LocalDateTime.now()
         );
 
         publishDepartmentSnapshot(department, "CALLED");
@@ -276,7 +283,8 @@ public class QueueService {
                 null,
                 null,
                 null,
-                "DISCHARGED"
+                "DISCHARGED",
+                LocalDateTime.now()
         );
 
         notificationService.notifyPatient(entry.getPatient().getId(), event);
@@ -372,7 +380,8 @@ public class QueueService {
                 null,
                 null,
                 null,
-                "LEFT_QUEUE"
+                "LEFT_QUEUE",
+                LocalDateTime.now()
         );
 
         notificationService.notifyPatient(patient.getId(), leftEvent);
@@ -413,7 +422,8 @@ public class QueueService {
                     null,
                     null,
                     null,
-                    "QUEUE_UPDATED"
+                    "QUEUE_UPDATED",
+                    LocalDateTime.now()
             );
 
             notificationService.notifyPatient(updatedEntry.getPatient().getId(), bumpedEvent);
@@ -473,7 +483,8 @@ public class QueueService {
                 null,
                 null,
                 null,
-                "CALLED"
+                "CALLED",
+                LocalDateTime.now()
         );
 
         notificationService.notifyPatient(entry.getPatient().getId(), event);
@@ -601,7 +612,8 @@ public class QueueService {
                     null,
                     null,
                     null,
-                    "POSITION_UPDATED"
+                    "POSITION_UPDATED",
+                    LocalDateTime.now()
             );
 
             notificationService.notifyPatient(entry.getPatient().getId(), event);
@@ -614,7 +626,8 @@ public class QueueService {
                 null, null, null, null, null, null,
                 null, null, null,
                 null,
-                null, "QUEUE_UPDATED"
+                null, "QUEUE_UPDATED",
+                LocalDateTime.now()
         ));
 
         publishDepartmentSnapshot(department, "POSITION_UPDATED");

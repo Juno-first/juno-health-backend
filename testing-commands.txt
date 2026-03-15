@@ -1,0 +1,26 @@
+docker exec -it healthapp_kafka kafka-console-consumer \
+--bootstrap-server kafka:29092 \
+--topic patient_queue \
+--from-beginning
+
+
+clickhouse:
+docker exec -it clickhouse clickhouse-client
+SHOW TABLES FROM healthcare_queue;
+SELECT * FROM healthcare_queue.patient_queue LIMIT 10;
+DESCRIBE healthcare_queue.patient_queue;
+
+
+kafka:
+docker exec -it healthapp_kafka  bash 
+
+/opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic patient_queue \
+  --from-beginning \
+  --property print.key=true
+
+
+kafka-connect:
+curl http://localhost:8083/connectors/clickhouse-connect/status -UseBasicParsing
+docker logs juno-backend-kafka-connect-1  --tail 100

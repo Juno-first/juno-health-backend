@@ -3,27 +3,32 @@ package com.juno.healthapp.dao;
 import com.juno.healthapp.entity.AuthAccount;
 import com.juno.healthapp.entity.QAuthAccount;
 import com.juno.healthapp.entity.QLoginAttempt;
+import com.querydsl.jpa.JPQLTemplates;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
+@DependsOn("postgresEntityManagerFactory")
 public class AuthAccountDAOImpl implements AuthAccountDAO {
 
-    @PersistenceContext
-    private EntityManager entityManager;
+    private final EntityManager entityManager;
     private final JPAQueryFactory queryFactory;
     private final QAuthAccount authAccount = QAuthAccount.authAccount;
     private final QLoginAttempt loginAttempt = QLoginAttempt.loginAttempt;
 
-    public AuthAccountDAOImpl(JPAQueryFactory queryFactory){
-        this.queryFactory = queryFactory;
+    public AuthAccountDAOImpl(@Qualifier("postgresEntityManagerFactory") EntityManager entityManager){
+        this.entityManager = entityManager;
+        this.queryFactory = new JPAQueryFactory(JPQLTemplates.DEFAULT, entityManager);
     }
 
     @Override
